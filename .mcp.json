@@ -1,0 +1,10 @@
+{
+  "selenium": {
+    "command": "npx",
+    "args": ["-y", "@angiejones/mcp-selenium@latest"]
+  },
+  "google-workspace": {
+    "command": "uvx",
+    "args": ["workspace-mcp", "--tool-tier", "core"]
+  }
+}

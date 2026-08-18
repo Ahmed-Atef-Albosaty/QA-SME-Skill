@@ -1,0 +1,11 @@
+{
+  "name": "qa-review",
+  "version": "1.0.0",
+  "description": "ISTQB-based release-readiness + product/UX review skill for web apps, enforcing SOP coverage-area criteria (ADMIN/TIER/CUSTOM) across desktop/tablet/mobile via a Selenium-driven browser session.",
+  "author": {
+    "name": "Your Name",
+    "email": "you@yourcompany.com"
+  },
+  "license": "MIT",
+  "keywords": ["qa", "testing", "istqb", "browser-automation", "selenium", "release-readiness"]
+}

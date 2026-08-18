@@ -1,0 +1,14 @@
+{
+  "name": "qa-review-marketplace",
+  "description": "ISTQB-based, Selenium-driven release-readiness QA review skill for web apps.",
+  "owner": {
+    "name": "Your Name",
+    "email": "you@yourcompany.com"
+  },
+  "plugins": [
+    {
+      "name": "qa-review",
+      "source": "."
+    }
+  ]
+}
