@@ -12,10 +12,10 @@ don't apply to this mode).
 to a Google Sheet, a hard 100K-token budget, and it explicitly forbids MCP-driven step-by-step testing.
 
 Quick mode is the opposite of that on every one of those axes: it stays **fully conversational, turn-by-turn
-MCP tool calls**, exactly like the rest of `qa-review` - it only swaps which browser MCP server drives the
-session (`selenium` instead of `fast-playwright`/`chrome-devtools`) and uses a smaller, auto-derived scope
-instead of a full-platform inventory. If you find yourself reaching for a Python script, a Google Sheet, or a
-token-budget cutoff while running this mode, stop - that's `/qa-run`'s pattern, not this one.
+MCP tool calls**, exactly like the rest of `qa-review` - it drives the browser via the same `selenium` MCP
+server as classic mode, just scoped to a smaller, auto-derived set of pages instead of a full-platform
+inventory. If you find yourself reaching for a Python script, a Google Sheet, or a token-budget cutoff while
+running this mode, stop - that's `/qa-run`'s pattern, not this one.
 
 ## One-time setup
 
@@ -24,8 +24,8 @@ Check the server is connected:
 claude mcp list   # look for "selenium: npx -y @angiejones/mcp-selenium@latest ... - ✔ Connected"
 ```
 If missing, `claude mcp add selenium -- npx -y @angiejones/mcp-selenium@latest`. **A freshly-added server's
-tools only appear in a new session** - same rule as fast-playwright/chrome-devtools/google-workspace/any
-other MCP server; tell the user to restart if it was just added.
+tools only appear in a new session** - the same rule applies to every MCP server (`google-workspace`
+included); tell the user to restart if it was just added.
 
 **This server has no `uid`-addressable click-by-reference concept.** Elements are addressed by **locator**
 (`by: id|css|xpath|name|tag|class`, `value: <selector string>`) instead of a snapshot-derived `uid`. It does
