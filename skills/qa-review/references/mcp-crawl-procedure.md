@@ -29,11 +29,44 @@ compounds fast. Default to the fast version of every pattern below, not the caut
   an `execute_script` read, have no ordering dependency on each other - issue them together rather than
   one-at-a-time across separate turns. (Calls with a real dependency - e.g. `interact` submit after both
   `send_keys` calls - still have to wait for their prerequisite.)
+- **Collapse a whole fill-and-submit sequence into one `execute_script` call - this is the single biggest
+  lever, since it turns 3-4 round-trips into 1.** `send_keys`/`interact` are still the right tools when you
+  only need one field or one click, or when you haven't yet confirmed a locator and want the server's own
+  wait/retry behavior. But once you know the field locators, a login/form-submit is almost always better done
+  as a single script that sets every field, dispatches the events the framework needs, clicks submit, and
+  returns the resulting state - all in one call instead of `send_keys` + `send_keys` + `interact` + a separate
+  settle-check `execute_script`:
+  ```js
+  const setVal = (el, v) => {
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(el, v);
+    el.dispatchEvent(new Event('input', {bubbles: true}));
+  };
+  setVal(document.querySelector('input[type="email"]'), 'user@example.com');
+  setVal(document.querySelector('input[type="password"]'), 'secret');
+  document.querySelector('button[type="submit"]').click();
+  await new Promise(r => setTimeout(r, 400));
+  return document.body.innerText.slice(0, 300);
+  ```
+  **Plain `el.value = v` alone is not enough on a React/controlled-input form** - the framework's state won't
+  see the change without a real `input` event, so the submit will fire with the old (empty) value. The native
+  setter + `dispatchEvent(new Event('input', {bubbles:true}))` pattern above is confirmed to work reliably;
+  reach for it any time you're scripting into a field this way rather than via `send_keys`. This same
+  single-call pattern applies to any multi-field action, not just login: filling a create/edit form, setting
+  a value inside a specific list row (scope the query to that row's container element first, e.g.
+  `[...document.querySelectorAll('li')].find(li => li.innerText.includes(...))`), or reading several
+  elements' text/attributes at once instead of one `get_element_text`/`get_element_attribute` call per
+  element - the tool description's own tip ("batch-reading multiple element values/states in a single call")
+  applies here too.
 - **`diagnostics()` is on-demand, not routine.** Only call it when actively investigating a specific
   suspected dead click, console error, or failed request - not as a reflexive step after every navigation or
   click. Calling all three `type`s on every screen as a matter of course triples the round-trips for
   information that's rarely needed. Do still call it wherever the skill's dead-click/error-finding discipline
   actually asks for it - that's real investigative use, not routine overhead.
+- **Only fall back to a `diagnostics()` dump when investigating something specific, and pass `clear: true`
+  when you do.** A full undamped `network` log accumulates every request since the session started, including
+  the browser's own SW/manifest/font noise - by the time you're 10+ navigations in, one call returns tens of
+  KB of mostly-irrelevant entries. Clear it right after you've read what you needed so the next investigative
+  call starts small again, instead of re-reading the same growing history every time.
 - **Don't re-derive context that's already known.** Scratch/dev confirmation, the platform spec, and the
   credential set are established once per run - don't re-check or re-read them per screen or per
   viewport-session.
@@ -256,6 +289,18 @@ any FAIL for "click did nothing":
    where the tool's `interact` didn't (a request fires, or the UI updates), this was a testing-tool artifact -
    mark the control as working, not a FAIL.** Only treat it as a real defect if the JS-dispatched click also
    produces no effect.
+   - **Confirmed live, the failure can also run the other direction for items inside an open dropdown/popover
+     menu**: on this app's Admin → Users row menu (confirmed on the "Remove" action, 2026-08-18),
+     `execute_script`'s raw `.click()` produced **no error, no confirm dialog (checked via `alert()` - none
+     present), and no visible or persisted change** - even though the exact same `execute_script`-`.click()`
+     technique worked fine moments earlier for opening that same menu and for a plain Save-style button
+     (Admin → Users "Set password"). A real WebDriver `interact` click on the same "Remove" button is the
+     fix. Likely cause: a Radix/Headless-UI-style menu often closes itself on any outside pointer event via a
+     document-level listener, and a script-synthesized `'click'` event (with no preceding real
+     `pointerdown`/`mousedown`) can land in a gap between "open the menu" and "the item's own handler fires" -
+     unconfirmed mechanism, but the practical rule holds regardless: **default to a real `interact` click (not
+     `execute_script`'s `.click()`) for anything that lives inside an open dropdown/menu/popover**, and only
+     reach for the `execute_script` second-opinion check above for plain in-page buttons, not menu items.
 3. Check `diagnostics({type: "network"})` immediately after the click, not just the visual DOM - a click can
    correctly fire a request that fails silently or succeeds without an obvious UI change. No request at all is
    stronger evidence of a real dead click than "the page didn't visibly change." **Confirmed live gotcha: every
