@@ -76,6 +76,15 @@ still blocks that worker's entire run, so it's better caught now than after 2 wo
 failing to log in. Then pass all 3 accounts' email/password/tier down into the Phase 1 `agent()` prompts.
 
 ## Phase 1 - parallel crawl + (Worker 1 only) write-path testing
+**Scope the `Workflow` invocation to Phase 1 only - the parallel crawl - and have the script `return` the
+3 workers' raw results once `parallel()` resolves.** Do not fold Phase 2 (merge) into the same Workflow
+script as another phase/agent() call. The main-turn orchestrator (this conversation) takes the Workflow's
+returned results and runs Phase 2 itself, as a normal foreground `Agent` tool call - visible in the chat,
+not hidden inside the background workflow. This is a deliberate visibility choice, not a cost/architecture
+one: merging is exactly the step where a wrong silent call (a cross-worker conflict resolved the wrong way,
+an output file collision, a skipped Google Doc export) is most worth being able to watch happen and step in
+on, rather than only finding out from a final notification.
+
 Use the `Workflow` tool's `parallel()` (all 3 viewport workers start together - there's no cross-worker
 dependency, so a barrier here costs nothing extra) with 3 `agent()` calls, one per viewport. Each agent
 prompt must:
@@ -173,8 +182,11 @@ never test this (it only ever has one active session), and it's exactly the kind
   channel presence ("N members online"), typing indicators, real-time comment/reaction counts updating on
   one viewer's screen while another account posts.
 
-## Phase 2 - merge (always sequential, always the orchestrator, never a worker)
-After all 3 `agent()` calls resolve:
+## Phase 2 - merge (always sequential, always the orchestrator, never a worker, never inside the Workflow script)
+**Run this as a foreground `Agent` tool call in the main conversation, after the `Workflow` call from
+Phase 1 has already returned** - never as a further `agent()`/`phase()` step inside that same Workflow
+script. Pass the 3 workers' returned JSON results into this agent's prompt directly (the Workflow result
+already has them; no need to re-fetch anything). After all 3 crawl results are in hand:
 - **Criteria rows:** for each `(area, check_item)` pair, assemble the Desktop cell from Worker 1's verdict,
   the Tablet cell from Worker 2's, the Mobile cell from Worker 3's. If a Tablet/Mobile worker left a
   write-path row UNVERIFIED (correctly, since it was forbidden from performing the write) and the row is
@@ -196,11 +208,15 @@ After all 3 `agent()` calls resolve:
 - Write the merged result to the same in-memory/working structures Step 3 (mapping) and Step 4c (final
   audit) expect, then proceed into Step 4c exactly as classic mode would, against this merged data.
 
-## Phase 3 - Step 4c, Step 5, Step 6 (unchanged)
+## Phase 3 - Step 4c, Step 5, Step 6 (unchanged, and also always foreground)
 Run exactly as documented in `SKILL.md` - final audit, write outputs, present summary - once, against the
-merged criteria sheet/findings. Note in the report's methodology section that this run used 3-worker
-parallel mode split by viewport (not persona) and which worker covered which column, so a reader can tell
-this apart from a classic run.
+merged criteria sheet/findings. **Same visibility rule as Phase 2: do this directly in the main
+conversation (your own Write/Edit/Bash calls, or a foreground `Agent` call you can watch), never as
+another `agent()` step tucked inside a background `Workflow` script.** Writing the actual
+criteria-sheet/findings/report files and the Google Doc export is exactly the kind of step where you want
+to see what got written where - not learn about it only from a final notification. Note in the report's
+methodology section that this run used 3-worker parallel mode split by viewport (not persona) and which
+worker covered which column, so a reader can tell this apart from a classic run.
 
 ## Cost/speed reference (carry forward, don't re-derive)
 Estimated from first-principles reasoning about duplicated setup, lost cross-worker cache reuse, and the
