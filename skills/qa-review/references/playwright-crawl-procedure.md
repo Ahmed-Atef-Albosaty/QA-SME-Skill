@@ -20,6 +20,18 @@ tool's own response already includes a fresh Page summary (URL, title, console e
 either an inline snapshot or a snapshot-file reference** - often enough to confirm the action landed without
 a separate follow-up call at all.
 
+**Confirmed live gotcha: an ambiguous CSS/text `target` selector manifests as a plain `TimeoutError` on
+`browser_click`/`browser_type`, not a clear error - but the exact same selector throws a clear "strict mode
+violation: locator(...) resolved to N elements" error when passed to `browser_snapshot`'s `target` param.**
+`button:has-text("Post")` (Playwright's `:has-text()` is a **substring** match) matched both a "+ New Post"
+button and the actual "Post" button on the same screen - `browser_click` just timed out with no indication
+why, while `browser_snapshot({target: "button:has-text(\"Post\")"})` on the identical selector immediately
+surfaced the real "resolved to 2 elements" error. **If a click on a CSS/text selector (not a snapshot `ref`)
+times out for no obvious reason, re-run the same selector through `browser_snapshot({target: ...})` first** -
+it's a fast way to tell "genuinely stuck/dead click" apart from "selector is just ambiguous." Prefer an exact
+match (`button[title="Post"]`, a fresh snapshot `ref`, or `getByRole`-style exact-name text) over a bare
+`:has-text()` substring match whenever more than one element could plausibly contain the same substring.
+
 **No `start_browser`-equivalent tool exists.** The browser session is implicit - it launches on first
 `browser_navigate` call, using whatever device/viewport/timeout flags the server process itself was started
 with (see "One-time setup" and "Parallel setup" below). There's nothing to call to "start" a session beyond
@@ -323,6 +335,35 @@ Testing a link/button that's supposed to open a new tab (`target="_blank"`, "App
 3. If both a real href/handler is confirmed AND the before/after tab-count comparison shows no new tab, that's
    real evidence of a defect. If only the tab-count check is inconclusive but the href/handler is confirmed
    real, don't mark it FAIL - mark it PASS or UNVERIFIED with a note about the tooling limitation, not a bug.
+
+## Testing @mentions, typeahead search, and any other keystroke-driven autocomplete
+**Confirmed live: `browser_type` uses Playwright's `.fill()` under the hood, which sets the field's value/
+content directly and does NOT dispatch real per-character keystroke events.** This is fine (and faster) for
+a plain text field, but it silently breaks any UI that listens for actual typing to drive behavior - an
+`@mention` picker, a typeahead search dropdown, live validation, a character counter wired to `keydown`, etc.
+Concretely: `browser_type`-ing `"Shoutout to @QA Tablet CySA"` into a rich-text post composer inserted the
+literal text `@QA Tablet CySA` with no mention picker ever appearing, and no real mention entity was created
+(the app never saw the `@` keystroke that should have triggered its own listener) - a reader would see plain
+text, and (critically for QA purposes) the platform's @mention notification system would never fire, since
+there's no real mention object behind the text.
+
+**For any control that reacts to individual keystrokes, use `browser_press_key` once per character instead
+of `browser_type`/`browser_fill_form`:**
+1. Click/focus the field first (a real `browser_click`, not just targeting it).
+2. Issue one `browser_press_key({key: "<char>"})` call per character you need to actually trigger the
+   listener for (the `@` and the first few letters of the name are usually enough to pop a dropdown -
+   you don't need to fill the whole message this way, only the part that needs live reactivity; plain prefix/
+   suffix text around it is fine via `browser_type`/`.fill()`). Multiple `browser_press_key` calls with no
+   ordering dependency can be issued together in one message.
+3. Check the resulting UI (`browser_snapshot()` or a targeted `browser_evaluate`) for the expected dropdown/
+   suggestion list, then select from it with a real `browser_click` on the specific suggestion (or another
+   `browser_press_key` sequence like `ArrowDown`+`Enter` if the picker supports keyboard selection) - don't
+   assume typing the full name via `browser_press_key` alone will auto-select anything.
+4. Verify the result is a real entity, not just visible text - e.g. for a mention picker,
+   `browser_evaluate` the composer's `innerHTML` and confirm a real mention node exists (this platform's
+   TipTap-based composer renders a genuine mention as
+   `<span data-mention="true" data-id="<uuid>" data-label="...">...</span>`, not just inline text) before
+   trusting that a downstream feature depending on it (a notification, a linked profile) will actually work.
 
 ## Before marking UI text/copy "missing" - rule out a shallow DOM-query artifact first
 This trap is a DOM/JavaScript fact independent of which browser MCP is driving the session, so it applies here
