@@ -357,28 +357,35 @@ Testing a link/button that's supposed to open a new tab (`target="_blank"`, "App
    real, don't mark it FAIL - mark it PASS or UNVERIFIED with a note about the tooling limitation, not a bug.
 
 ## Testing @mentions, typeahead search, and any other keystroke-driven autocomplete
-**Confirmed live: `browser_type` uses Playwright's `.fill()` under the hood, which sets the field's value/
-content directly and does NOT dispatch real per-character keystroke events.** This is fine (and faster) for
-a plain text field, but it silently breaks any UI that listens for actual typing to drive behavior - an
-`@mention` picker, a typeahead search dropdown, live validation, a character counter wired to `keydown`, etc.
-Concretely: `browser_type`-ing `"Shoutout to @QA Tablet CySA"` into a rich-text post composer inserted the
-literal text `@QA Tablet CySA` with no mention picker ever appearing, and no real mention entity was created
-(the app never saw the `@` keystroke that should have triggered its own listener) - a reader would see plain
-text, and (critically for QA purposes) the platform's @mention notification system would never fire, since
-there's no real mention object behind the text.
+**Confirmed live: `browser_type`'s DEFAULT behavior uses Playwright's `.fill()` under the hood, which sets
+the field's value/content directly and does NOT dispatch real per-character keystroke events.** This is fine
+(and faster) for a plain text field, but it silently breaks any UI that listens for actual typing to drive
+behavior - an `@mention` picker, a typeahead search dropdown, live validation, a character counter wired to
+`keydown`, etc. Concretely: `browser_type`-ing `"Shoutout to @QA Tablet CySA"` into a rich-text post composer
+inserted the literal text `@QA Tablet CySA` with no mention picker ever appearing, and no real mention entity
+was created (the app never saw the `@` keystroke that should have triggered its own listener).
 
-**For any control that reacts to individual keystrokes, use `browser_press_key` once per character instead
-of `browser_type`/`browser_fill_form`:**
+**Correction - `browser_type` has a `slowly: true` option that fixes this in one call, don't reach for a
+manual `browser_press_key` loop first.** `browser_type({target, text, slowly: true})` types one character at
+a time with real keystroke events, per the tool's own description ("useful for triggering key handlers in the
+page") - this is confirmed to exist and is the right first choice for any keystroke-reactive field. A manual
+`browser_press_key` loop (one call per character) is a working fallback if `slowly: true` for some reason
+doesn't trigger a specific app's listener, but it's several tool calls where one `browser_type({..., slowly:
+true})` call usually suffices - default to `slowly: true` for autocomplete/mention/typeahead fields, and only
+drop to the character-by-character `browser_press_key` loop if that single call doesn't produce the expected
+dropdown/listener behavior.
+
+**For a control that reacts to individual keystrokes:**
 1. Click/focus the field first (a real `browser_click`, not just targeting it).
-2. Issue one `browser_press_key({key: "<char>"})` call per character you need to actually trigger the
-   listener for (the `@` and the first few letters of the name are usually enough to pop a dropdown -
-   you don't need to fill the whole message this way, only the part that needs live reactivity; plain prefix/
-   suffix text around it is fine via `browser_type`/`.fill()`). Multiple `browser_press_key` calls with no
-   ordering dependency can be issued together in one message.
+2. `browser_type({target, text: "@Qu", slowly: true})` (or however many characters are needed to trigger the
+   listener - the `@` plus the first few letters of a name are usually enough to pop a dropdown; you don't
+   need `slowly: true` for surrounding plain text that doesn't need live reactivity, mix it with a normal
+   `browser_type` call for the rest of the message). If this doesn't produce the expected UI, fall back to
+   one `browser_press_key({key: "<char>"})` call per character instead.
 3. Check the resulting UI (`browser_snapshot()` or a targeted `browser_evaluate`) for the expected dropdown/
-   suggestion list, then select from it with a real `browser_click` on the specific suggestion (or another
+   suggestion list, then select from it with a real `browser_click` on the specific suggestion (or a
    `browser_press_key` sequence like `ArrowDown`+`Enter` if the picker supports keyboard selection) - don't
-   assume typing the full name via `browser_press_key` alone will auto-select anything.
+   assume typing the full name will auto-select anything.
 4. Verify the result is a real entity, not just visible text - e.g. for a mention picker,
    `browser_evaluate` the composer's `innerHTML` and confirm a real mention node exists (this platform's
    TipTap-based composer renders a genuine mention as
