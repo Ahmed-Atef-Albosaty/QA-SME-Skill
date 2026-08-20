@@ -47,6 +47,19 @@ waits (up to `--timeout-action`) for the target to be visible, stable (unchanged
 enabled, and able to receive pointer events. This eliminates almost all of the manual "settle-check via script,
 then one retry" discipline older locator-based tools needed. The decision tree for the rest of this run:
 
+**Confirmed live gotcha: `--timeout-action` also covers waiting for a click-triggered navigation to settle,
+not just pre-click actionability - and a timeout here does NOT mean the click failed.** A login-submit
+`browser_click` on a cold-loading page threw `TimeoutError: ... waiting for scheduled navigations to finish`
+at the configured `--timeout-action=3500` budget - but the tool's own log showed `click action done` right
+before that wait, and a follow-up `browser_snapshot()` confirmed the login had genuinely succeeded server-side
+(the post-login nav rendered correctly). **Never blindly retry a click after this specific timeout shape**
+(actionability/click steps completed, only the post-click navigation-settle wait exceeded budget) - retrying
+a non-idempotent action (a form submit, an Add/Create button) risks a real duplicate submission. Instead:
+check current state first (`browser_snapshot()` or the URL) to see whether it already went through, and only
+retry the actual click if it clearly didn't. This is more likely on submit-style buttons on a slow/cold-loading
+target than on plain same-page clicks - if it recurs often against one platform, raise that path's
+`action_ms` via the platform spec's `slow_endpoints` config rather than tolerating the timeout every time.
+
 1. **Default: call the action tool directly, nothing else.** `browser_click({target})`,
    `browser_type({target, text})`, `browser_fill_form({fields: [{target, name, type, value}, ...]})`,
    `browser_select_option({target, values})` all auto-wait internally. Don't add a manual check before or
