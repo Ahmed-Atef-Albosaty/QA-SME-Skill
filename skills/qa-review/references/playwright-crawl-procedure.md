@@ -323,6 +323,26 @@ multi-step dual-click dance:
 3. Reproduce once more with a fresh navigation before filing a FAIL, exactly as the multi-step-verification
    rule in `SKILL.md` Step 2c already requires for any bug - this part is unchanged.
 
+**Confirmed live - a genuinely real, high-value bug class: Playwright's own click-retry log often names the
+exact element intercepting the click, which is stronger evidence than any dead-click discipline above and
+should be read before assuming a plain timeout.** A `browser_click` that keeps retrying and then times out
+prints its retry log inline in the error - watch for a line like `<div class="..."> from <div
+class="...z-50..."> subtree intercepts pointer events`. This means the real browser genuinely could not
+deliver the click to your target because a different element (usually a modal backdrop, an overlay, or a
+mis-stacked portal) sits on top of it in the actual paint/z-index order - **this is real evidence of a
+genuine app-level stacking bug, not a testing-tool artifact**, since it's describing the same hit-testing a
+real mouse click would go through. Confirmed on this platform: a tier-selection dropdown inside a "New Call"
+modal rendered its options in the DOM/visually correctly, but the modal's own `backdrop-blur` overlay div sat
+above the dropdown in stacking order, so every real click on a tier option was silently swallowed - a
+JS-dispatched `.click()` (via `browser_evaluate`) bypassed the broken hit-testing and "worked" only because it
+skips real pointer-event delivery entirely, which is exactly why a JS-click "success" on a menu/dropdown item
+should never be trusted as proof the control is fine (see the general JS-click-inside-a-menu caution
+elsewhere in this file) - here, the JS click masked a real, user-facing defect for at least one report cycle
+where a tier-visibility feature always silently fell back to "everyone" instead of failing loudly. **Whenever
+you resort to a JS-dispatched click to get past a real click that failed, treat that as a reason to
+investigate *why* the real click failed (check the retry log for an intercepting element) before writing the
+row up as PASS on the strength of the JS click alone.**
+
 ## New-tab / new-window detection
 Testing a link/button that's supposed to open a new tab (`target="_blank"`, "Apply", "View posting", etc.):
 1. Confirm via a quick DOM check (`browser_evaluate` or reading the element's attributes off the
