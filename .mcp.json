@@ -1,7 +1,7 @@
 {
-  "selenium": {
+  "playwright": {
     "command": "npx",
-    "args": ["-y", "@angiejones/mcp-selenium@latest"]
+    "args": ["@playwright/mcp@latest", "--caps=storage,testing,devtools", "--timeout-action=3500", "--timeout-navigation=45000"]
   },
   "google-workspace": {
     "command": "uvx",

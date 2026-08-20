@@ -14,11 +14,12 @@ every crawled screen, on top of the open-ended ISTQB review dimensions. Every ch
 **N/A vs FALSE:** N/A means the feature is intentionally absent from this platform. If a feature should be
 there per spec but is broken or missing, mark it **FALSE**, not N/A.
 
-Devices: Desktop = 1920×1080 Chrome window, headed. Tablet = 1024×1366 (iPad Pro 12.9" dimensions), headed.
-Mobile = 500×800 - the narrowest viewport the Selenium MCP server (`@angiejones/mcp-selenium`) can produce
-(`--window-size` has a confirmed hard floor around 500px wide, both headed and headless; request
-`--window-size=500,943` to get exactly 500×800). This is the fixed Mobile target for this skill going
-forward, not a true device-preset width - narrower than a 500px viewport isn't achievable with this tooling.
+Devices: Desktop = `"Desktop Chrome"` @1920×1080, headed. Tablet = `"iPad Pro 11"` (834×1194, real device DPR
+and touch emulation), headed. Mobile = `"iPhone 15"` (393×852) - these are real Playwright device presets
+(set via the `--device` launch flag on the official `@playwright/mcp` server), not a manual viewport
+workaround. This is the fixed device trio for this skill going forward - see
+`references/playwright-crawl-procedure.md` for the exact launch commands and how to confirm the preset names
+resolve correctly against the running server version.
 
 ---
 

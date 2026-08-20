@@ -1,6 +1,6 @@
 ---
 name: qa-review
-description: "Run a complete ISTQB-based release-readiness + product/UX review of a running LMS/web app, enforcing the ScalingEasy QA SOP coverage-area criteria. Drives a real browser via a Selenium MCP server to first discover every screen/custom page on the platform, then lets the user choose a full QA (every screen) or a partial QA scoped to specific pages/areas/custom features, logging in per role and visiting the in-scope screens across desktop/tablet/mobile, capturing screenshots/HTML, then assessing the six hats + the SOP per-area checklists (ADMIN/TIER/CUSTOM) and writing a Release-Readiness Report plus a filled criteria sheet. Also supports a lighter 'quick mode' (`/qa-review quick <page_url> <email> <password>`) that uses the same Selenium MCP server but scans just a given page and its linked subsidiary pages, writing a findings-only quick-scan report - no SOP scorecard, no platform-wide discovery. Use before promoting a finished phase (or a single page/feature fix) to production, or when asked to QA / review / assess an application or a specific page/feature for release, or to quickly sanity-check one page and what it links to."
+description: "Run a complete ISTQB-based release-readiness + product/UX review of a running LMS/web app, enforcing the ScalingEasy QA SOP coverage-area criteria. Drives a real browser via Microsoft's official Playwright MCP server to first discover every screen/custom page on the platform, then lets the user choose a full QA (every screen) or a partial QA scoped to specific pages/areas/custom features, logging in per role and visiting the in-scope screens across desktop/tablet/mobile, capturing screenshots/HTML, then assessing the six hats + the SOP per-area checklists (ADMIN/TIER/CUSTOM) and writing a Release-Readiness Report plus a filled criteria sheet. Also supports a lighter 'quick mode' (`/qa-review quick <page_url> <email> <password>`) that uses the same Playwright MCP server but scans just a given page and its linked subsidiary pages, writing a findings-only quick-scan report - no SOP scorecard, no platform-wide discovery. Use before promoting a finished phase (or a single page/feature fix) to production, or when asked to QA / review / assess an application or a specific page/feature for release, or to quickly sanity-check one page and what it links to."
 ---
 
 # /qa-review
@@ -22,18 +22,18 @@ All paths below are relative to this skill's directory (`references/`). Read the
 point the step below tells you to - don't rely on memory of what they contain, and don't skip opening one
 because its content seems inferable from the section title.
 - **`references/parallel-mode.md`** - required reading the moment 3-worker parallel mode is chosen in Step
-  1b. Defines the persona-worker design (admin + 2 tier/role workers), the 3-server Selenium MCP
+  1b. Defines the persona-worker design (admin + 2 tier/role workers), the 3-server Playwright MCP
   prerequisite, and the merge/audit/write flow back into Steps 4c/5/6. If you're about to run parallel mode
   and haven't opened this file yet in this conversation, stop and read it first - do not improvise the
   persona-worker split from the summary in Step 1b/2/4b alone.
-- `references/mcp-crawl-procedure.md` - full Selenium MCP tool-by-tool crawl procedure, covering both
+- `references/playwright-crawl-procedure.md` - full Playwright MCP tool-by-tool crawl procedure, covering both
   the lightweight discovery pass (Step 2a) and the full per-viewport capture pass (Step 2c); read before Step 2a.
 - `references/coverage-areas.md` - the 8 SOP coverage areas + per-area check items; read before Step 2a and Step 3.
 - `references/review-dimensions.md` - ISTQB six-hats review dimensions §3.1–3.10; read before Step 4.
 - `references/finding-types.md` - finding classification (type/category/severity/priority); read before Step 4.
 - `references/istqb-principles.md` - safe-testing rules and golden-rule mindset; read before Step 2a and Step 4.
 - `references/report-template.md` - exact structure for the three Step 5 output files.
-- **`references/selenium-quick-mode.md`** - the entry point for **quick mode**
+- **`references/playwright-quick-mode.md`** - the entry point for **quick mode**
   (`/qa-review quick <page_url> <email> <password>`). Self-contained: for a quick-mode run, follow this file
   in full **instead of** Steps 1–6 below, which describe the classic full-platform review only.
 
@@ -41,9 +41,9 @@ because its content seems inferable from the section title.
 
 ### 0. Mode dispatch
 If invoked as `/qa-review quick <page_url> <email> <password>`, this is **quick mode**: follow
-`references/selenium-quick-mode.md` in full instead of Steps 1-6 below. Quick mode is a self-contained
+`references/playwright-quick-mode.md` in full instead of Steps 1-6 below. Quick mode is a self-contained
 procedure with its own lighter input-gathering, discovery, capture, assessment, and output steps - it uses
-the same `selenium` MCP server as classic mode below, just scoped to the given page plus its linked
+the same `playwright` MCP server as classic mode below, just scoped to the given page plus its linked
 subsidiary pages (not a full-platform inventory), and produces a findings-only quick-scan report (not a SOP
 criteria-sheet/scorecard). It stays fully conversational/MCP-driven throughout - never delegate any part of it
 to a script or to `/qa-run`'s architecture (a different, script-driven command; see the quick-mode file's
@@ -58,7 +58,12 @@ Ask the user for:
 - **Credentials per role** - at minimum an **admin** and a **standard member** account; add one login per
   **tier** if TIER rows need to be exercised (`[{"label":"admin","tier":null,"email":...,"password":...}, {"label":"member","tier":"tier_lite","email":...,"password":...}]`).
 - **The platform spec** - check for `platform-specs/<slug>.md` in the current repo first; it tells you
-  which tiers exist and which features are **CUSTOM** for this client. Ask the user if no spec exists.
+  which tiers exist and which features are **CUSTOM** for this client. Ask the user if no spec exists. If the
+  spec has a `## Playwright QA Config` block (device presets, storage-state paths, ready-markers, slow
+  endpoints, dialog controls, complex-feature sequences - see `references/playwright-crawl-procedure.md`),
+  read it now; it drives Step 2a's launch options and saves rediscovering the same app-specific quirks every
+  run. If no such block exists yet, one gets built up as this run learns the platform (see the write-back
+  convention in Step 2a).
 - Any deep-link start paths worth seeding the crawl with (e.g. `/community`, `/settings`).
 - **Don't ask which pages/features to test yet.** Full vs. partial scope is decided in Step 2b, after the
   discovery crawl has actually enumerated what's on the platform - asking here would just be guessing blind.
@@ -79,7 +84,7 @@ Ask this once, right after Step 1's inputs are gathered and before starting Step
 > worker - admin + 2 tiers/roles - each with its own isolated browser, crawling and write-testing
 > simultaneously)? Parallel is roughly 2-3x faster wall-clock but costs an estimated 20-35% more tokens
 > (duplicated per-worker setup, plus a merge pass that doesn't exist in sequential mode), and needs a
-> one-time 3-server Selenium MCP setup plus per-run opt-in for the `Workflow` tool."
+> one-time 3-server Playwright MCP setup plus per-run opt-in for the `Workflow` tool."
 
 - **Default to classic single-agent** if the user doesn't have a preference or this is a quick/small run.
 - **If parallel is chosen:** this requires the `Workflow` tool, which needs the user's opt-in each time
@@ -99,38 +104,38 @@ pass.** It runs unconditionally regardless of whether the run ends up full or pa
 parallel mode) runs once in the main/orchestrator turn before any persona-worker is spawned - see
 `references/parallel-mode.md`.
 
-This skill drives a real browser turn-by-turn through a **Selenium MCP server**
-(`@angiejones/mcp-selenium`), not a background script. Full tool-by-tool procedure (setup check, login
-pattern, the discovery-pass loop, endpoint discovery techniques) is in `references/mcp-crawl-procedure.md`'s
+This skill drives a real browser turn-by-turn through Microsoft's official **Playwright MCP server**
+(`@playwright/mcp`), not a background script. Full tool-by-tool procedure (setup check, login pattern, the
+discovery-pass loop, endpoint discovery techniques) is in `references/playwright-crawl-procedure.md`'s
 "Discovery pass" section - read it before starting.
 
-Quick summary: confirm `selenium` shows Connected in `claude mcp list` (add it with `claude mcp add selenium
--- npx -y @angiejones/mcp-selenium@latest` if missing; note a freshly-added server needs a new session
-before its tools appear); `ToolSearch` for the `mcp__selenium__*` tools; log in per role (this server
-addresses elements by CSS/XPath **locator**, not a chrome-devtools-style snapshot `uid` - see
-`references/mcp-crawl-procedure.md` for the full login recipe); then for every endpoint discovered (prefer a
-manually-provided or spec-listed endpoint list over pure link-following - hidden-nav admin/staff panels are
-easy to miss otherwise), `navigate` + a lightweight `execute_script` DOM read at desktop-sized launch options
-is enough for this pass - **no tablet/mobile session, no screenshot files, no diagnostics capture yet, that's
-Step 2c and only for whatever ends up in scope.** As you go, build the **screen inventory**: for every
-screen, its URL/path, a short descriptive name, which of the 8 SOP areas it maps to (or **Custom** if none),
-and which role is required to view it - this is the same screen→area mapping Step 3 does today, just done
-here, up front, and lightly.
+Quick summary: confirm `playwright` shows Connected in `claude mcp list` (add it with
+`claude mcp add playwright -- npx @playwright/mcp@latest --caps=storage,testing,devtools` if missing; note a
+freshly-added server needs a new session before its tools appear); `ToolSearch` for the `mcp__playwright__*`
+tools; log in per role (this server addresses elements by a stable `ref` returned from `browser_snapshot()`,
+not a manual CSS/XPath locator - see `references/playwright-crawl-procedure.md` for the full login recipe);
+then for every endpoint discovered (prefer a manually-provided or spec-listed endpoint list over pure
+link-following - hidden-nav admin/staff panels are easy to miss otherwise), `browser_navigate` + a lightweight
+`browser_snapshot()` read at the Desktop device preset is enough for this pass - **no tablet/mobile session,
+no screenshot files, no console/network capture yet, that's Step 2c and only for whatever ends up in scope.**
+As you go, build the **screen inventory**: for every screen, its URL/path, a short descriptive name, which of
+the 8 SOP areas it maps to (or **Custom** if none), and which role is required to view it - this is the same
+screen→area mapping Step 3 does today, just done here, up front, and lightly.
 
 **URL/route discovery - don't rely on visible nav links alone.** A normal click-through of the top nav will
 miss routes that only render behind a click (query-param tabs, modals, deep-linked settings pages). Before
 concluding the endpoint list is complete, actively try these, roughly in order of effort:
 1. Ask the user for an endpoint list or check `platform-specs/<slug>.md` first - cheapest and most reliable.
 2. Look for a `sitemap.xml` at the site root - rarely populated for gated apps but free to check.
-3. For a Next.js/React app, a `diagnostics()` network read or an `execute_script` fetch of `/_next/static/...`
-   chunk source can reveal route strings not currently reachable via UI - use if you suspect hidden routes
-   and the above two options come up empty.
+3. For a Next.js/React app, a `browser_network_requests` read or a `browser_evaluate` fetch of
+   `/_next/static/...` chunk source can reveal route strings not currently reachable via UI - use if you
+   suspect hidden routes and the above two options come up empty.
 3b. **If the platform spec documents a backend API (e.g. Supabase project URL + anon key), query it
    directly** - a read-only `GET {url}/rest/v1/` (PostgREST) or equivalent schema/discovery call enumerates
    every exposed table/view/RPC, which reveals feature surfaces (users, tiers, channels, tickets, courses,
    etc.) and their route/key naming even when nothing in the front end currently links to them. This is
    safe recon (GETs only) and often finds routes nav-following and bundle inspection both miss - see
-   `references/mcp-crawl-procedure.md` "Endpoint discovery" for the full technique.
+   `references/playwright-crawl-procedure.md` "Endpoint discovery" for the full technique.
 4. **Systematically enumerate every tab inside every panel you land on** - this is usually the highest-value
    step. A single "Manage"/"Admin"/"Settings" entry point often hides many distinct sub-panels behind a
    tablist or sidebar (see the consolidated-admin-panel note in Step 3) that a generic crawler or browser
@@ -154,6 +159,13 @@ this platform read the spec's list first (per the "URL/route discovery" priority
 re-discovering the same hidden-nav routes from scratch every time. Skip this write-back only if no spec file
 exists and the user hasn't asked for one to be created.
 
+**Also append any newly-learned Playwright config facts to the same spec's `## Playwright QA Config` block**
+(create the block if it doesn't exist yet) - a `ready_markers` entry for a screen's distinctive "loaded" text
+(used by `browser_wait_for` instead of guessing), a `slow_endpoints` entry if a path needed a longer
+per-action timeout than the global default, or a `dialog_controls` entry if a control turned out to trigger a
+genuinely native browser dialog. Same append-only discipline as the endpoint list. See
+`references/playwright-crawl-procedure.md` for the full schema.
+
 ### 2b. Choose scope - full QA or partial QA
 Present the discovered inventory to the user, grouped by SOP area with each custom page listed separately,
 and ask once:
@@ -169,22 +181,22 @@ and ask once:
   3-worker parallel mode was chosen - see `references/parallel-mode.md`. Each worker then receives only the
   in-scope screen list, never the full inventory.
 
-### 2c. Full capture - per in-scope screen, via Selenium MCP
+### 2c. Full capture - per in-scope screen, via Playwright MCP
 **If 3-worker parallel mode was chosen in Step 1b, skip this step as written and follow
 `references/parallel-mode.md` instead** - each persona-worker does its own version of this step, scoped to
 the same in-scope screen list from Step 2b, inside its own isolated browser. What follows is the classic
 single-agent path.
 
-Iterate only over the screens confirmed in scope in Step 2b (all of them, for a full run). Because this
-Selenium server has no mid-session resize/`emulate()` call, viewport is fixed for a browser session's
-lifetime - so the loop is **viewport-outer, screen-inner**: launch a session for Desktop (1920×1080), log in,
-capture every in-scope screen, close the session; then Tablet (1024×1366); then Mobile (500×800 - the
-narrowest viewport this Selenium server can produce, confirmed via a hard width floor around 500px; see
-`references/coverage-areas.md`). Each screen's screenshot + a controls read (for links/buttons) + a `diagnostics()` call
-- writing screenshots to `qa-runs/<slug>/screenshots/` with the `<role>_<screen-slug>_<viewport>.png` naming
-convention and HTML to `qa-runs/<slug>/html/`. Full tool-by-tool procedure, including the exact
-`start_browser` launch options per viewport, is in `references/mcp-crawl-procedure.md`'s "Per-screen capture"
-section.
+Iterate only over the screens confirmed in scope in Step 2b (all of them, for a full run). Playwright MCP
+still has no mid-session device-resize call, so viewport stays fixed for a browser session's lifetime - the
+loop is **viewport-outer, screen-inner**: launch a session with the `"Desktop Chrome"` device preset
+(1920×1080), log in, capture every in-scope screen, close the session; then `"iPad Pro 11"`; then
+`"iPhone 15"` (393×852 - a real device preset, not a workaround; see `references/coverage-areas.md`). Each
+screen's screenshot + a `browser_snapshot()` read (for interactive elements, replacing the old manual
+controls-scrape) - writing screenshots to `qa-runs/<slug>/screenshots/` with the
+`<role>_<screen-slug>_<viewport>.png` naming convention and HTML to `qa-runs/<slug>/html/` if captured. Full
+tool-by-tool procedure, including the exact launch options per viewport, is in
+`references/playwright-crawl-procedure.md`'s "Per-screen capture" section.
 
 **Safe mode still applies:** open forms and probe fields, but never click submit/delete/logout/deactivate/
 pay/send/purge/confirm controls without the scratch/dev confirmation below.
@@ -207,20 +219,18 @@ coverage.
 **Every criteria-sheet check and every custom-feature check must be forcibly tested end-to-end before it
 can be marked FAIL - a single click with an immediate visual check is not sufficient and produces false
 negatives.** A control that looks like a dead click is just as likely to be a testing artifact (page not
-yet hydrated, a fixed wait that fired too early) as a real defect - before concluding a control is broken:
-1. **Check once immediately, retry once if needed - don't default to a multi-cycle poll.** This Selenium
-   server has no dedicated wait/`textGone` tool at all. Try the click/check first; if it looks like nothing
-   happened, do a single `execute_script` state check - if that already shows the expected text/DOM state,
-   you're done. Only if it doesn't, add one brief pause and retry once more before concluding anything -
-   SPA hydration on a cold serverless deploy is the one case worth a single extra retry, not a standing
-   multi-poll default.
-2. **Check `diagnostics({type: "network"})` immediately after the click**, not just the visual DOM. A click
-   can correctly fire a request that fails silently (or succeeds without an obvious UI change) - inspect
-   whether any request went out at all. No request at all is stronger evidence of a real dead click than
-   "the page didn't visibly change," which could just mean the UI doesn't render feedback for that action.
-   Confirmed live: every entry in the output also carries a paired `{"type":"error"}` record regardless of
-   real success - only trust an entry with an actual `errorText` field as evidence of failure, per
-   `references/mcp-crawl-procedure.md`.
+yet hydrated) as a real defect - before concluding a control is broken:
+1. **Trust Playwright's built-in auto-waiting by default - don't hand-roll a settle-check.** Every action
+   tool (`browser_click`, `browser_type`, `browser_fill_form`, etc.) already waits for the target to be
+   visible/stable/enabled/receiving-events before acting, within `--timeout-action`. This replaces the old
+   manual "check once, retry once" discipline for the common case - see
+   `references/playwright-crawl-procedure.md`'s Speed section for the full decision tree (when to add
+   `browser_wait_for`, when to use `browser_verify_text_visible`/`browser_verify_element_visible`, and the two
+   cases that still genuinely need a fixed-time wait).
+2. **Check `browser_network_requests` (filtered to the endpoint you'd expect) immediately after a click that
+   should have done something but visibly didn't.** No request at all is real evidence of a dead click; a
+   request that fired but produced no obvious UI change might just mean the app doesn't render feedback for
+   that action - don't conflate the two.
 3. **Verify persistence with a real reload**, not just an in-session visual check, for anything that's
    supposed to save (settings, profile edits, created records) - an optimistic-UI update can look like
    success while never having reached the server.
@@ -231,42 +241,31 @@ Only after these steps still show no effect (no request fired, no state change, 
 row be marked FAIL. If time is genuinely short, it's better to mark a row UNVERIFIED with a note than to
 mark it FAIL off a single fast click.
 
-5. **Before finalizing any dead-click FAIL, rule out a testing-tool click failure, not a product bug.** This
-   exact failure mode was previously confirmed for the chrome-devtools MCP server's synthetic-CDP `click`
-   tool (Client A's Community-page run, 2026-08-15: a reaction-icon button's `click` reported success 3 times
-   across 2 different posts with no request ever firing, while a genuine JS-dispatched `.click()` fired the
-   expected request and got a `201` back) - **it is unconfirmed whether this same mechanism affects Selenium's
-   `interact` tool**, since WebDriver dispatches real, native browser input events rather than a synthetic CDP
-   click. Don't assume it's fixed just because the mechanism differs, though - keep the verification step as a
-   standing discipline: confirm the element's `getBoundingClientRect()` (via `execute_script`) is genuinely
-   within the current viewport bounds first (an element scrolled out of view, or a leftover narrower
-   viewport-session from earlier, is a common cause of a link technically existing but sitting off-screen).
-   Then, if the real `interact` click still had no effect, dispatch a direct `.click()` on the same element
-   via `execute_script` as a fallback. **If the JS-dispatched click succeeds where the real click didn't, this
-   was a testing-tool artifact - mark the row PASS, not FAIL.** Only treat it as a real defect if the
-   JS-dispatched click also produces no effect. This check is mandatory before writing up any "shared systemic
-   dead-click root cause" finding, since a single testing-tool click-delivery gap explains a cluster of
-   "broken" controls just as well as a single app-level bug does - see `references/mcp-crawl-procedure.md`
-   for the full technique. (Confirmed live: Selenium's `execute_script` accepts real literal values as
-   `args` - not the uid-only restriction chrome-devtools imposed - e.g. pass a CSS selector string as `args:
-   ["#foo"]` and re-query it via `document.querySelector(arguments[0])` inside the script, rather than baking
-   the literal into the function body.)
+5. **Playwright's `browser_click` targets a `ref` from a live snapshot and auto-waits for real actionability,
+   which removes most of the old synthetic-click-artifact risk** (a click reported as "successful" with zero
+   real effect and zero network request - a failure mode previously confirmed for a different, more primitive
+   MCP browser tool's synthetic click delivery). The dual-click verification dance that used to be mandatory
+   here shrinks to one check: if you have specific reason to suspect a stale `ref` (you clicked something from
+   a snapshot taken before an intervening DOM change), re-`browser_snapshot()` and retry once against the
+   fresh ref before concluding anything - don't assume a "click did nothing" result is real without at least
+   ruling out a stale ref first. See `references/playwright-crawl-procedure.md`'s "Before finalizing any
+   dead-click FAIL" section for the full detail.
 
 **Testing a link/button that's supposed to open a new tab (`target="_blank"`, "Apply", "View posting",
-etc.) needs a different check than same-page state changes - checking the window list *after* clicking is
-not reliable**, since a newly-opened window can be missed if it wasn't being watched for at the moment it
+etc.) needs a different check than same-page state changes - checking the tab list *after* clicking is
+not reliable**, since a newly-opened tab can be missed if it wasn't being watched for at the moment it
 opened. Before concluding such a control is broken:
-1. First confirm via `execute_script` whether the element genuinely has a real destination (e.g. an
+1. First confirm via a quick DOM check whether the element genuinely has a real destination (e.g. an
    `<a>` with a non-empty `href` and `target="_blank"`, or an onclick handler that calls `window.open`).
    If it does, that's strong evidence the control is wired correctly even if a new-tab check comes back
    empty - a real href is not decorative.
-2. Call `window({action: "list"})` immediately before the click to record the current window-handle count,
-   then click, then call it again - a genuine new-tab open should show up in this before/after comparison,
-   which is more reliable than a single post-click check.
-3. If both a real href/`window.open` call is confirmed AND a before/after handle-count comparison shows no new
-   window, that's real evidence of a defect. If only the handle-count check is inconclusive but the
-   href/handler is confirmed real, don't mark it FAIL - mark it PASS (a verified destination is verified
-   functionality) or UNVERIFIED with a note about the tooling limitation, not a bug.
+2. Call `browser_tabs({action: "list"})` immediately before the click to record the current tab count, then
+   click, then call it again - a genuine new-tab open should show up in this before/after comparison, which
+   is more reliable than a single post-click check.
+3. If both a real href/`window.open` call is confirmed AND a before/after tab-count comparison shows no new
+   tab, that's real evidence of a defect. If only the tab-count check is inconclusive but the href/handler is
+   confirmed real, don't mark it FAIL - mark it PASS (a verified destination is verified functionality) or
+   UNVERIFIED with a note about the tooling limitation, not a bug.
 
 ### 3. Confirm coverage gaps within scope
 The screen→area mapping itself already happened in Step 2a's discovery pass. Read `references/coverage-areas.md`
@@ -405,7 +404,7 @@ to find the entry point.
   self-targeting actions (Send Magic Link/Reset Password/Log In As User) are commonly disabled for the
   admin's own currently-logged-in account, and every *other* listed user is usually a real external person you
   don't have permission to email.** Don't leave admin-triggered email rows UNVERIFIED just because of this - create a **disposable test user via Add User whose email is a `+alias` of the tester's own inbox** (e.g.
-  `you+clienttest@yourcompany.com` routes to `you@yourcompany.com`), then trigger Reset
+  `ahmed.a+mlptest@scalingeasy.com` routes to `ahmed.a@scalingeasy.com`), then trigger Reset
   Password/Send Magic Link/Send Invite against *that* new user (not your own logged-in account, not a real
   member). Check the mailbox MCP for delivery and branding, then delete the disposable user when done. That's
   a genuinely safe target the self-service login-screen path can't substitute for, since it exercises the
@@ -480,7 +479,7 @@ stale or unverified claims slip into the delivered report - this has actually ha
   weak; a bug that seemed rock-solid can turn out to be mis-scoped (e.g. actually platform-specific, or
   present on one tab but not another) or occasionally a flat-out false positive from a testing-tool artifact
   (see the DOM leaf-node and dead-click sections above) - and the only way to catch either is to run it
-  again with fresh eyes, not to re-read your own earlier notes and nod along. On the Client B's run
+  again with fresh eyes, not to re-read your own earlier notes and nod along. On the SCALEDOS run
   (2026-07-23), this final pass caught a bug that was really only reproducible on one of two platform tabs
   (the original write-up implied both) - the fix was a one-line scope correction, but it would have shipped
   wrong without the recheck. Update severity/scope/screenshots based on what you see this time, not what you
@@ -514,8 +513,8 @@ stale or unverified claims slip into the delivered report - this has actually ha
   === 0`) will silently return empty for real, visible text whenever the target phrase is split across a text
   node and a nested inline element (e.g. a note containing a bolded button-name mid-sentence) - no single leaf
   node then contains the full substring, regardless of what's actually on screen. See
-  `references/mcp-crawl-procedure.md`'s "Before marking UI text/copy missing" section for the check to run.
-  This produced a confirmed, retracted false-positive bug on the Client B's run (2026-07-23) - the finding was
+  `references/playwright-crawl-procedure.md`'s "Before marking UI text/copy missing" section for the check to run.
+  This produced a confirmed, retracted false-positive bug on the SCALEDOS run (2026-07-23) - the finding was
   only caught because the user asked for a post-hoc cross-check of screenshots against bug descriptions, which
   should not be the safety net. Any FAIL of the shape "X text/note never appears" needs a screenshot taken at
   the moment of the check, not just a DOM query, before it's written up.
@@ -562,31 +561,29 @@ Write all three to `qa-runs/<slug>/`:
   **Every `bug-screenshots/` image must have a red circle/box drawn around the exact spot the bug is
   visible** - a reviewer shouldn't have to hunt across a full-page screenshot to find what's wrong. This is a
   mandatory finishing step for every visual (non-network-level) FAIL, done the same moment you copy the file
-  into `bug-screenshots/`. Recipe (Selenium tool names; same technique also documented in
-  `references/selenium-quick-mode.md`'s "Every `bug-screenshots/` image must have a red circle"
-  section, which has the full worked example):
-  1. With the buggy element still on screen, get its precise position via `execute_script`:
-     `arguments[0].getBoundingClientRect()` for a normal element, or - if the visible text doesn't literally exist in
-     the DOM as a match target (e.g. CSS `text-transform`'d text) - walk text nodes directly
-     (`document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)`) and use
-     `document.createRange().selectNodeContents(node).getBoundingClientRect()` on the raw text node, which is
-     tighter than the parent element's full-width container rect.
-  2. Take the screenshot, then check its actual pixel dimensions (e.g. `PIL.Image.open(...).size`) against
-     the CSS-pixel viewport size from step 1 - on a Retina/HiDPI session these commonly differ by a
-     `devicePixelRatio` of 2, so the rect must be scaled before it lines up with actual screenshot pixels.
-     Verify the factor once per session, reuse it after.
-  3. Draw the annotation with Pillow (`ImageDraw.Draw(im).ellipse(...)` for a small control/icon,
-     `.rounded_rectangle(...)` for a wider region like an entire sidebar) with a few pixels of padding,
-     stroked several times at 1px offsets for a visibly thick red outline (`(255,0,0)`) - save over the same
-     `bug-screenshots/` filename.
-  4. **Always read the annotated PNG back (the `Read` tool renders images) before moving on** - confirm the
-     circle actually lands on the bug and not a same-named element elsewhere on the page (a plain text match
-     on a common word can hit a nav item instead of the intended target; narrow the selector until the rect
-     is right).
-  5. For a fleeting/timing-based bug (e.g. a flash-of-unstyled-content that self-corrects in 1-3s), the
-     *container's* rect is stable even though its *content* isn't - grab the container's rect from the
-     resolved state (any time), then apply that same box to the screenshot that happened to catch the bug
-     mid-glitch.
+  into `bug-screenshots/`. Default recipe (`--caps=devtools`; same technique also documented in
+  `references/playwright-quick-mode.md`):
+  1. `browser_snapshot()` to get the buggy element's ref (e.g. `e71`).
+  2. `browser_highlight({target: "e71", element: "<short description>", style: "outline: 4px solid red;
+     outline-offset: 2px;"})` - draws the overlay directly on the live element at real device pixels
+     (confirmed live: the custom `style` param renders exactly as given - a thick red box precisely around
+     the target, no manual `getBoundingClientRect()`/`devicePixelRatio` scaling needed at all).
+  3. `browser_take_screenshot({filename: "..."})`, copy into `bug-screenshots/` per the folder discipline
+     above.
+  4. `browser_hide_highlight({target: "e71", element: "<same description>"})` before the next capture, so
+     overlays don't bleed across screenshots.
+  **Two cases still need a manual `browser_evaluate`-based fallback instead of `browser_highlight`:**
+  - **CSS `text-transform`'d text with no matching accessibility node** (e.g. a heading rendered in all-caps
+    via a stylesheet rule, where the real DOM text is mixed-case) - `browser_snapshot` won't give you a clean
+    `ref` for the raw text node. Walk text nodes directly via
+    `document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)` and use
+    `document.createRange().selectNodeContents(node).getBoundingClientRect()`, then draw the box with a
+    minimal image library at that rect (still need HiDPI scaling here, since this path bypasses
+    `browser_highlight`'s automatic real-pixel targeting).
+  - **A fleeting/timing-based bug** (e.g. a flash-of-unstyled-content that self-corrects in 1-3s) - by the
+    time you snapshot+highlight, the glitch is gone. Grab the *container's* stable rect from the resolved
+    state (any time, via `browser_evaluate`), then apply that same box to the screenshot that happened
+    to catch the bug mid-glitch.
   **Notes column: only write something for a bug row (a FAIL verdict) or a row worth flagging as an idea - leave every plain PASS/N/A/UNVERIFIED row's Notes as `-`.** Don't restate verification steps or reasoning
   for passing rows in the delivered sheet; that detail belongs in your own working process, not the output.
   A bug row gets a tight one-line description of what's broken/missing (optionally pointing at a finding ID).
@@ -616,7 +613,7 @@ Write all three to `qa-runs/<slug>/`:
   as a lazy placeholder.** A finding about a backend 400/500 or a malformed API call has no visible on-page
   symptom, so a screenshot of "the page it happened on" (e.g. the dashboard) shows nothing related to the
   bug and is misleading evidence - a reviewer looking at it can't tell what they're supposed to see. Instead:
-  1. Reproduce the error and pull the exact text via `diagnostics()`
+  1. Reproduce the error and pull the exact text via `browser_console_messages`/`browser_network_requests`
      (status code, endpoint, response body) - never paraphrase it, quote the real string.
   2. Render that real text as a small standalone HTML page styled like a browser DevTools console/network
      panel (dark background, monospace font, red error rows, the actual URL/status) - a `data:text/html`
@@ -684,7 +681,7 @@ retests, and late findings come in after the doc already exists. Keep editing th
 ID) via `modify_doc_text`/`find_and_replace_doc`/`batch_update_doc` instead of creating a brand-new file/URL
 every time something changes. Only call `create_doc` once per genuinely new run.
 
-**Screenshot embedding - confirmed working recipe (2026-08-15, Client C's quick-mode run).** `insert_doc_image`
+**Screenshot embedding - confirmed working recipe (2026-08-15, learnsudo quick-mode run).** `insert_doc_image`
 only accepts a Drive file ID or a public `http(s)://` URL - never a local path. Getting a `bug-screenshots/`
 PNG actually inline (not a text placeholder) takes exactly these steps, in order, every time:
 
@@ -796,7 +793,7 @@ a `find_text` built assuming double-`\n` separators will silently match 0 occurr
 what's actually in that range.** `delete_text`/a wide `batch_update_doc` delete operates on character
 *positions*, and an inline image occupies a position exactly like a character does - a range-delete aimed at
 "stale placeholder text" will just as happily delete a real image the user manually inserted into that same
-range, with no separate confirmation or warning. This actually happened on the Client B's run (2026-07-23): a
+range, with no separate confirmation or warning. This actually happened on the SCALEDOS run (2026-07-23): a
 "clean rebuild" delete meant to clear out drifted placeholder text also silently wiped screenshots the user
 had pasted in by hand, and the mistake wasn't caught until the user pointed it out. Before any delete wider
 than a single paragraph on a doc that may have been touched outside your own tool calls, call
