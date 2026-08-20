@@ -97,6 +97,23 @@ failing to log in. Then pass all 3 accounts' email/password/tier/storage-state-p
 `agent()` prompts.
 
 ## Phase 1 - parallel crawl + (Worker 1 only) write-path testing
+**This is a real, separate step - Phase 0 completing does not mean parallel mode is "running."** Phase 0's
+login happens in the orchestrator's own turn, directly on the 3 named servers; Phase 1 is a distinct action
+that actually launches the 3 background subagents via `Workflow`. Don't consider parallel mode underway
+until the `Workflow` call itself has been made - completing Phase 0 and then continuing to drive
+`mcp__playwright1/2/3__*` tools yourself is still the orchestrator doing classic-mode-style work, not parallel
+mode, however many servers are configured.
+
+**A session the orchestrator authenticates directly in Phase 0 carries over into that same persona's Phase 1
+subagent with no extra step.** Because each server process holds one continuous browser session for as long
+as it stays connected, a Phase 1 `agent()` call scoped to (say) `mcp__playwright2__*` inherits whatever page/
+login state the orchestrator left that session in - it does not need to re-log-in or restore a storage-state
+file if the orchestrator already did the Phase 0 login on that same server. State the exact current page/URL
+each worker's session is sitting on in its prompt, and explicitly tell it not to navigate to the login page
+again. Storage-state save/restore (described above) is for the case where a *fresh* session needs to boot
+pre-authenticated (a new run, a crashed/restarted server) - it's not needed for a same-session Phase 0 → Phase
+1 handoff within one continuous conversation.
+
 **Scope the `Workflow` invocation to Phase 1 only - the parallel crawl - and have the script `return` the
 3 workers' raw results once `parallel()` resolves.** Do not fold Phase 2 (merge) into the same Workflow
 script as another phase/agent() call. The main-turn orchestrator (this conversation) takes the Workflow's
