@@ -584,6 +584,23 @@ Write all three to `qa-runs/<slug>/`:
     time you snapshot+highlight, the glitch is gone. Grab the *container's* stable rect from the resolved
     state (any time, via `browser_evaluate`), then apply that same box to the screenshot that happened
     to catch the bug mid-glitch.
+  **Video evidence for multi-step or intermittent functional bugs** (a click-sequence, a form flow, anything
+  a single screenshot can't show): use `browser_start_video({filename: "qa-runs/<slug>/bug-screenshots/<id>.webm", size: {width, height}})`
+  before reproducing the bug, `browser_video_chapter({title, description, duration})` to mark named
+  checkpoints (e.g. "Actual dropdown options" right before the moment that matters - the card appears as a
+  blurred-backdrop title screen in the recording, useful for narrating what the viewer is about to see),
+  `browser_video_show_actions()`/`browser_video_hide_actions()` to toggle an on-screen action-callout overlay
+  while driving the repro, and `browser_stop_video()` to finalize (confirmed live: writes an actual `.webm`
+  file at the given project-relative path, same file-write sandboxing as screenshots). **Use this especially
+  for a suspected-Critical bug before writing it up as confirmed** - a repro that only fails once and can't be
+  reproduced on a same-session retest should not ship as a Critical finding on a single click-retry error
+  alone; a full video of a clean, repeated repro (or the retry attempt showing it does *not* reproduce) is
+  much stronger evidence either way than a text description of a diagnostic log line. Confirmed live: a
+  "Critical, root-caused via Playwright's click-retry diagnostic" finding was retracted in the same run after
+  it failed to reproduce twice on a careful manual retest immediately after - the diagnostic log alone had
+  been treated as sufficient evidence prematurely. Video (or at minimum a second/third live repro attempt with
+  network-level confirmation) is the corrective habit going forward for any single-observation bug claim,
+  Critical severity especially.
   **Notes column: only write something for a bug row (a FAIL verdict) or a row worth flagging as an idea - leave every plain PASS/N/A/UNVERIFIED row's Notes as `-`.** Don't restate verification steps or reasoning
   for passing rows in the delivered sheet; that detail belongs in your own working process, not the output.
   A bug row gets a tight one-line description of what's broken/missing (optionally pointing at a finding ID).
