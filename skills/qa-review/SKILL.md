@@ -192,8 +192,9 @@ still has no mid-session device-resize call, so viewport stays fixed for a brows
 loop is **viewport-outer, screen-inner**: launch a session with the `"Desktop Chrome"` device preset
 (1920×1080), log in, capture every in-scope screen, close the session; then `"iPad Pro 11"`; then
 `"iPhone 15"` (393×852 - a real device preset, not a workaround; see `references/coverage-areas.md`). Each
-screen's screenshot + a `browser_snapshot()` read (for interactive elements, replacing the old manual
-controls-scrape) - writing screenshots to `qa-runs/<slug>/screenshots/` with the
+screen gets a screenshot that's `Read` back live (a real visual look, not just an artifact - see
+"Per-screen capture" for why this matters) plus a `browser_snapshot()` read (for interactive elements,
+replacing the old manual controls-scrape) - writing screenshots to `qa-runs/<slug>/screenshots/` with the
 `<role>_<screen-slug>_<viewport>.png` naming convention and HTML to `qa-runs/<slug>/html/` if captured. Full
 tool-by-tool procedure, including the exact launch options per viewport, is in
 `references/playwright-crawl-procedure.md`'s "Per-screen capture" section.

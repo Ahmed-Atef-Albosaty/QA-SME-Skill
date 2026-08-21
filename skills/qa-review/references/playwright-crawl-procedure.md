@@ -32,6 +32,21 @@ it's a fast way to tell "genuinely stuck/dead click" apart from "selector is jus
 match (`button[title="Post"]`, a fresh snapshot `ref`, or `getByRole`-style exact-name text) over a bare
 `:has-text()` substring match whenever more than one element could plausibly contain the same substring.
 
+**`browser_snapshot()` tells you the page's structure, not what it looks like - don't drive the crawl on
+structure alone.** The accessibility tree is a component renderer's view of the page: it confirms a button
+with the right role/name exists at some ref, but it has no concept of whether that button visually overlaps
+another element, renders off-screen, is clipped by an ancestor, or looks broken in a way that doesn't touch
+its accessible name. A screen can report a perfectly correct `browser_snapshot()` while looking genuinely
+wrong to a human - that's exactly the BUG-03-style class of finding (content overflow, clipped text,
+misaligned layout) that a structure-only read cannot surface. **At least once per new screen during the live
+crawl itself - not deferred entirely to the offline Step 4 nitpick pass - take the screenshot and then
+actually `Read` that same file back** (the Read tool renders it inline as an image you can look at) before
+moving on. Use `browser_snapshot()` for the mechanical "what can I click and what's its ref" question; use the
+screenshot read for "does this actually look right." The two are complementary, not redundant - do both, not
+one instead of the other. If something looks visually off in that live read, investigate it right then while
+the session is still open and interactive (re-navigate, resize, inspect the element) rather than only noting
+it for the later batch pass.
+
 **No `start_browser`-equivalent tool exists.** The browser session is implicit - it launches on first
 `browser_navigate` call, using whatever device/viewport/timeout flags the server process itself was started
 with (see "One-time setup" and "Parallel setup" below). There's nothing to call to "start" a session beyond
@@ -269,7 +284,12 @@ screen:
    - `browser_navigate({url})`. Skip a separate settle-check by default (per the Speed section) - go straight
      to the capture calls below; only add a `browser_wait_for({text:...})` first if you have a known
      ready-marker for this path or the capture below comes back visibly empty/loading.
-   - `browser_take_screenshot({filename: "qa-runs/<slug>/screenshots/<role>_<screen-slug>_<viewport>.png"})`.
+   - `browser_take_screenshot({filename: "qa-runs/<slug>/screenshots/<role>_<screen-slug>_<viewport>.png"})`,
+     then `Read` that same file back immediately - a real, in-the-moment look at what a human would see on
+     this screen/viewport, not just an artifact saved for later. This is cheap (one screenshot's worth of
+     image tokens) and is the only point in the crawl where visual-only defects (overlap, clipping,
+     misalignment, broken responsive layout) can be caught while the session is still live enough to
+     investigate further.
    - `browser_snapshot()` for the structured interactive-element list (this replaces the old
      manual controls-scrape - the snapshot already lists every interactive element with its role/name), plus,
      only if you want a raw HTML capture too,
